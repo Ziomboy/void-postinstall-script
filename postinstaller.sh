@@ -58,7 +58,7 @@ PACKAGES=(
   xdg-user-dirs xdg-utils
   
   # Utilities & Applications
-  alacritty firefox flatpak zramen mono steam linux-mainline
+  alacritty firefox flatpak zramen mono steam linux-mainline nano fastfetch
 )
 
 xbps-install -y "${PACKAGES[@]}"
