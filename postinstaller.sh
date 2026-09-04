@@ -2,8 +2,14 @@
 set -euo pipefail
 
 if [ "$EUID" -ne 0 ]; then
-  echo "==> Elevating to root..."
-  exec sudo bash "$0" "$@"
+  if [ -f "$0" ]; then
+    echo "==> Elevating to root..."
+    exec sudo bash "$0" "$@"
+  else
+    echo "ERROR: Script piped via stdin. Please run with sudo:" >&2
+    echo "curl -fsSL <url> | sudo bash" >&2
+    exit 1
+  fi
 fi
 
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
