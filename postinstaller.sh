@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 1. Ensure root privileges
 if [ "$EUID" -ne 0 ]; then
   echo "==> Elevating to root..."
   exec sudo bash "$0" "$@"
 fi
 
-# 2. Determine target non-root user (works via sudo, login shell, or root fallback)
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
   TARGET_USER="$SUDO_USER"
 elif [ -n "${USER:-}" ] && [ "$USER" != "root" ]; then
   TARGET_USER="$USER"
 else
-  # Fallback: grab the first regular user account (UID >= 1000)
   TARGET_USER=$(awk -F: '$3 >= 1000 && $3 < 65534 {print $1; exit}' /etc/passwd || true)
 fi
 
@@ -24,7 +21,6 @@ fi
 TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
 echo "==> Target user: $TARGET_USER ($TARGET_HOME)"
 
-# Add target user to standard groups (network is critical for NetworkManager)
 if [ "$TARGET_USER" != "root" ]; then
   echo "==> Adding $TARGET_USER to system groups..."
   usermod -aG wheel,audio,video,input,network "$TARGET_USER" || true
@@ -87,20 +83,44 @@ chown -R "$TARGET_USER:" "$ALACRITTY_DIR"
 echo "==> 7. Disabling dhcpcd and wpa_supplicant services..."
 rm -f /var/service/dhcpcd /var/service/wpa_supplicant
 
-echo "==> 8. Configuring PipeWire..."
-# Link ALSA plugin
+echo "==> 8. Configuring PipeWire audio stack..."
+rm -rf /etc/pipewire/pipewire.conf.d
+
 mkdir -p /etc/alsa/conf.d
 ln -sf /usr/share/alsa/alsa.conf.d/50-pipewire.conf /etc/alsa/conf.d/
 
-# Let PipeWire supervise WirePlumber and PulseAudio
-mkdir -p /etc/pipewire/pipewire.conf.d
-ln -sf /usr/share/examples/wireplumber/10-wireplumber.conf /etc/pipewire/pipewire.conf.d/
-ln -sf /usr/share/examples/wireplumber/20-pipewire-pulse.conf /etc/pipewire/pipewire.conf.d/ 2>/dev/null || \
-ln -sf /usr/share/examples/pipewire/20-pipewire-pulse.conf /etc/pipewire/pipewire.conf.d/
+AUTOSTART_DIR="/etc/xdg/autostart"
+mkdir -p "$AUTOSTART_DIR"
 
-# Desktop autostart hook for PipeWire
-mkdir -p /etc/xdg/autostart
-ln -sf /usr/share/applications/pipewire.desktop /etc/xdg/autostart/
+cat << 'EOF' > "$AUTOSTART_DIR/pipewire.desktop"
+[Desktop Entry]
+Type=Application
+Name=PipeWire
+Exec=pipewire
+Terminal=false
+NoDisplay=true
+X-KDE-autostart-phase=1
+EOF
+
+cat << 'EOF' > "$AUTOSTART_DIR/pipewire-pulse.desktop"
+[Desktop Entry]
+Type=Application
+Name=PipeWire PulseAudio Emulation
+Exec=pipewire-pulse
+Terminal=false
+NoDisplay=true
+X-KDE-autostart-phase=1
+EOF
+
+cat << 'EOF' > "$AUTOSTART_DIR/wireplumber.desktop"
+[Desktop Entry]
+Type=Application
+Name=WirePlumber Session Manager
+Exec=wireplumber
+Terminal=false
+NoDisplay=true
+X-KDE-autostart-phase=1
+EOF
 
 echo "==> 9. Enabling Flathub repository system-wide..."
 flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
@@ -117,7 +137,6 @@ if [ -f /etc/default/grub ]; then
   fi
 fi
 
-# Reconfigures all packages, triggers kernel hooks, dracut initramfs, and grub updates
 xbps-reconfigure -fa
 
 echo "==> 12. Enabling runit services..."
@@ -127,6 +146,12 @@ for svc in "${SERVICES[@]}"; do
     ln -sf "/etc/sv/$svc" /var/service/
   fi
 done
+
+# Ensure everything in the target user's home folder belongs to the user
+if [ "$TARGET_USER" != "root" ]; then
+  echo "==> Fixing home directory ownership for $TARGET_USER..."
+  chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
+fi
 
 echo "==> Setup complete! Rebooting in 5 seconds (Press Ctrl+C to cancel)..."
 sleep 5
