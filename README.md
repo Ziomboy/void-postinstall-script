@@ -12,6 +12,6 @@ Void post-install script that:
 
 Run with:
 
-"""curl -fsSL https://raw.githubusercontent.com/Ziomboy/void-postinstall-script/refs/heads/main/postinstaller.sh | sudo bash"""
+curl -fsSL https://raw.githubusercontent.com/Ziomboy/void-postinstall-script/refs/heads/main/postinstaller.sh | sudo bash
 
 (before that xbps-install -u xbps and xbps-install -S curl might be needed)
